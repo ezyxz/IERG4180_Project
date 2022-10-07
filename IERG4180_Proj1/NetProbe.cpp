@@ -55,8 +55,8 @@ int encode_pkt(char* msg, int i);
 int decode_pkt(char* msg);
 double loss_cal(set<int> set, int start, int end);
 void getIPaddress();
-long SetSendBufferSize (long size);
-long SetReceiveBufferSize (long size);
+long SetSendBufferSize(long size);
+long SetReceiveBufferSize(long size);
 
 
 int main(int argc, char* argv[])
@@ -125,7 +125,7 @@ void getIPaddress() {
         printf("IP addr %d: %s\n", i + 1, inet_ntoa(*(struct in_addr*)host->h_addr_list[i]));
     }
 
-    
+
 
 }
 
@@ -135,7 +135,7 @@ int tcpSend() {
     SOCKET new_sock;
     struct sockaddr_in server, client;
     int c;
-    char msg[5000];
+    char msg[50000];
 
     long long bytes_sent = 0;
     long long total_send = 0;
@@ -188,11 +188,11 @@ int tcpSend() {
     printf("Connection accepted from clinet ip %s | port %d\n", client_ip, client_port);
 
     //char* msg = "Hello Client , I have received your connection. But I have to go now, bye\n";
-    
+
 
     printf("single_iter_pkt_threshold %f\n", single_iter_pkt_threshold);
 
-    
+
     while (!if_error && (p_num_index < pktnum || pktnum == 0)) {
 
         if (total_send < single_iter_pkt_threshold || pktrate == 0) {
@@ -215,7 +215,7 @@ int tcpSend() {
             p_num_index++;
             pkts_send_per_stat++;
         }
-            
+
         current_clock = clock();
         double time_cost = ((double)current_clock - previous_clock) / CLOCKS_PER_SEC;
         //printf("%.2f  ", time_cost * 1000);
@@ -254,7 +254,7 @@ int tcpRecv() {
     server.sin_addr.s_addr = inet_addr(lhost);
     server.sin_family = AF_INET;
     server.sin_port = htons(port);
-    
+
     if (rbufsize > 0)
         SetReceiveBufferSize(rbufsize);
 
@@ -315,15 +315,15 @@ int tcpRecv() {
             double throughput = (cum_bytes_recv * 8) / (cum_time_cost * 1000000);
             double jitter = calculate_mean_cost(J_i_list, cum_packet_number);
             double loss = loss_cal(set, start_pkt_index, curr_pkt_index);
-            printf("Reciver:[Elapsed] %.2f ms, [Pkts] %d, [Rate] %.5f Mbps, [Lost] %.5f%%, [Jitter] %.6f ms\n", cum_time_cost * 1000, cum_packet_number, throughput, loss*100, jitter);
+            printf("Reciver:[Elapsed] %.2f ms, [Pkts] %d, [Rate] %.5f Mbps, [Lost] %.5f%%, [Jitter] %.6f ms\n", cum_time_cost * 1000, cum_packet_number, throughput, loss * 100, jitter);
             cum_packet_number = 0;
             cum_time_cost = 0;
             cum_bytes_recv = 0;
             set.clear();
-            start_pkt_index = curr_pkt_index+1;
+            start_pkt_index = curr_pkt_index + 1;
         }
 
-        
+
 
 
     }
@@ -347,7 +347,7 @@ int udpSend() {
     struct sockaddr_in client;
     int slen = sizeof(client);
     int pkt_index = 1;
-    char msg[10000];
+    char msg[50000];
     int port = strtol(rport, NULL, 10);
 
     if (port < 0) {
@@ -364,7 +364,7 @@ int udpSend() {
     client.sin_family = AF_INET;
     client.sin_port = htons(port);
     client.sin_addr.s_addr = inet_addr(rhost);
-    memset(msg, 0, 5000);
+    memset(msg, 0, 50000);
 
 
     double single_iter_pkt_threshold = pktrate * ((double)mystat / 1000);
@@ -428,15 +428,15 @@ int udpSend() {
 
         }
     }
-    
-    
+
+
     return 0;
 }
 
 int udpRecv() {
     struct sockaddr_in client, server;
     int s, i, slen = sizeof(client);
-    char msg[5000];
+    char msg[50000];
     int port = strtol(rport, NULL, 10);
     if (port < 0) {
         printf("error port number %d \n", port);
@@ -469,7 +469,7 @@ int udpRecv() {
     int start_seq = 1;
     while (1) {
 
-        int r = recvfrom(sock, msg, 5000, 0, (struct sockaddr*)&server, &slen);
+        int r = recvfrom(sock, msg, 50000, 0, (struct sockaddr*)&server, &slen);
         if (r == -1)
         {
             printf("Recv fail with error code %d\n", WSAGetLastError());
@@ -488,19 +488,19 @@ int udpRecv() {
         previous_clock = current_clock;
 
         total_time += time_gap;
-       
+
 
         if (total_time >= mystat) {
             double throughput = ((double)bytes_recv * 8) / (total_time * 1000);
             double jitter = calculate_mean_cost(J_i_list, pkt_recv);
             double loss = loss_cal(recv_set, start_seq, sender_pkt_index);
-            printf("Receiver:[Elapsed] %.2f ms, [Pkts] %d, [Bytes] %d B, [Lost] %.5f%%,[Rate] %.5f Mbps, [Jitter] %.6f\n", total_time, pkt_recv, bytes_recv, loss*100, throughput, jitter);
+            printf("Receiver:[Elapsed] %.2f ms, [Pkts] %d, [Bytes] %d B, [Lost] %.5f%%,[Rate] %.5f Mbps, [Jitter] %.6f\n", total_time, pkt_recv, bytes_recv, loss * 100, throughput, jitter);
             //printf("send_pkt_index %d | Loss %.5f\n", sender_pkt_index, loss);
             pkt_recv = 0;
             bytes_recv = 0;
             total_time = 0;
             recv_set.clear();
-            start_seq = sender_pkt_index+1;
+            start_seq = sender_pkt_index + 1;
         }
 
 
@@ -511,17 +511,17 @@ int udpRecv() {
 
 
 
-long SetSendBufferSize (long size) {
+long SetSendBufferSize(long size) {
     int Size = size;
-    if (setsockopt(sock, SOL_SOCKET, SO_SNDBUF,(char *)(&Size), sizeof(Size)) < 0)
+    if (setsockopt(sock, SOL_SOCKET, SO_SNDBUF, (char*)(&Size), sizeof(Size)) < 0)
         return -1;
     else
         return Size;
 }
 
-long SetReceiveBufferSize (long size) {
+long SetReceiveBufferSize(long size) {
     int Size = size;
-    if (setsockopt(sock, SOL_SOCKET, SO_RCVBUF,(char *)(&Size), sizeof(Size)) < 0)
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVBUF, (char*)(&Size), sizeof(Size)) < 0)
         return -1;
     else
         return Size;
@@ -538,16 +538,16 @@ double loss_cal(set<int> set, int start, int end) {
 }
 
 int encode_pkt(char* msg, int i) {
-    char num[16] = {0};
-    memset(msg, 0,  5000);
+    char num[16] = { 0 };
+    memset(msg, 0, 50000);
     itoa(i, num, 10);
-    memcpy(msg, num, strlen(num)+1);
-    memcpy(msg+ strlen(num), "#", 1);
+    memcpy(msg, num, strlen(num) + 1);
+    memcpy(msg + strlen(num), "#", 1);
     return 1;
 }
 
 int decode_pkt(char* msg) {
-    for (long i = 0; i < 5000; i++) {
+    for (long i = 0; i < 50000; i++) {
         if (msg[i] == '#') {
             msg[i] = '\0';
             break;
@@ -630,7 +630,7 @@ void argParse(int argc, char* argv[]) {
         case 7:
             pktsize = strtol(optarg, NULL, 10);
             if (pktsize > 0) {
-               // printf("pktsize is set to:%d\n", pktsize);
+                // printf("pktsize is set to:%d\n", pktsize);
             }
             else {
                 pktsize = 1000;
