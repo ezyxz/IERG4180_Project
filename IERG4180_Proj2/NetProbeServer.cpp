@@ -1,4 +1,4 @@
-/**
+    /**
  * @Author Xinyuan Zuo
  * @SID 1155183193
  * */
@@ -24,6 +24,20 @@ typedef struct DOKI_packet {
 //TCP Connection Socket
 SOCKET sock_default;
 
+
+typedef struct SockClock{
+    clock_t current;
+    clock_t previous;
+    long threshold;
+    int stat;
+    long send;
+    long pktnum;
+    long pktsend;
+
+
+} SockClock;
+
+
 struct sockaddr_in server, client;
 // parameters
 char* lhost = "localhost";
@@ -38,6 +52,7 @@ SOCKET socketHandles[maxSockets]; // Array for the socket handles
 bool socketValid[maxSockets]; // Bitmask to manage the array
 int numActiveSockets = 1;
 DOKI_packet socketConfigList[maxSockets];
+SockClock socketClockList[maxSockets];
 struct sockaddr_in socket_client_address[maxSockets];
 
 
@@ -53,6 +68,7 @@ int getUdpSenderSock(SOCKET newsfd, DOKI_packet doki);
 int getUdpReceiverSock(SOCKET newsfd, DOKI_packet doki);
 long SetSendBufferSize(SOCKET sock, long size);
 long SetReceiveBufferSize(SOCKET sock, long size);
+
 //os 1->linux 0->win
 int main(){
     printf("programme running on %s\n", LOCAL_SYSTEM);
@@ -83,10 +99,20 @@ int main(){
     if (bind(sock_default, (struct sockaddr*)&server, sizeof(server)) == SOCKET_ERROR)
     {
         printf("Bind failed with error code : %d", getErrorCode());
+        printf("Exit.....Please rerun the programme\n");
+        return -1;
     }
     printf("successful.\n");
 
     listen(sock_default, 10);
+
+    if (sbufsize > 0){
+        SetSendBufferSize(sock_default, sbufsize);
+    }
+    if (rbufsize > 0){
+        SetReceiveBufferSize(sock_default, rbufsize);
+    }
+
     
     unsigned long ul_val = 1; // 1 means enable
     for (int i = 1; i < maxSockets; i++) socketValid[i] = false;
@@ -113,8 +139,11 @@ int main(){
 
         // Block on select() //
         int ret;
+        double time_out = 1;
+        struct timeval timeout_select;
+        timeout_select.tv_sec = time_out;
         if ((ret = select(topActiveSocket + 1, &fdReadSet,
-            &fdWriteSet, NULL, NULL)) == SOCKET_ERROR) {
+            &fdWriteSet, NULL, &timeout_select)) == SOCKET_ERROR) {
             printf("\nselect() failed. Error code: %i\n", getErrorCode());
             return 0;
         }
@@ -147,7 +176,7 @@ int main(){
             if (!socketValid[i]) continue; // Only check for valid sockets.
             if (FD_ISSET(socketHandles[i], &fdWriteSet)) { // Is socket i active?
                 if (i == 0) {
-
+                        //noting
                 }
                 else {
                     if (socketConfigList[i].proto == 0) {
@@ -261,12 +290,19 @@ void processNewConnection() {
         int j = 1;
         for (; j < maxSockets; j++) {
             if (socketValid[j] == false) {
-                connPrint(client_ip, client_port, j, j, doki.mode, doki.proto, doki.pktrate);
+                connPrint(client_ip, client_port, j, j+1, doki.mode, doki.proto, doki.pktrate);
                 socketValid[j] = true;
                 socketHandles[j] = newsfd;
                 socketConfigList[j] = doki;
                 socket_client_address[j] = client;
                 ++numActiveSockets;
+                if (doki.mode == 1){
+                    socketClockList[j].previous = clock();
+                    socketClockList[j].threshold = doki.pktrate * ((double)500 / 1000);
+                    socketClockList[j].send = 0;
+                    socketClockList[j].pktnum = doki.pktnum;
+                    socketClockList[j].pktsend = 0;
+                }
                 if (numActiveSockets == maxSockets) {
                     // Ignore new accept()
                     socketValid[0] = false;
@@ -280,13 +316,19 @@ void processNewConnection() {
         //server receive client send in udp
         if (doki.mode == 0) {
             int index = getUdpReceiverSock(newsfd, doki);
-            connPrint(client_ip, client_port, index, index, doki.mode, doki.proto, doki.pktrate);
+            connPrint(client_ip, client_port, index, index+1, doki.mode, doki.proto, doki.pktrate);
 
         }
         //server send client receive in udp
         else if (doki.mode = 1) {
+
             int index = getUdpSenderSock(newsfd, doki);
-            connPrint(client_ip, client_port, index, index, doki.mode, doki.proto, doki.pktrate);
+            socketClockList[index].previous = clock();
+            socketClockList[index].threshold = doki.pktrate * ((double)500 / 1000);
+            socketClockList[index].send = 0;
+            socketClockList[index].pktnum = doki.pktnum;
+            socketClockList[index].pktsend = 0;
+            connPrint(client_ip, client_port, index, index+1, doki.mode, doki.proto, doki.pktrate);
         }
     }
 
@@ -403,7 +445,7 @@ int getUdpSenderSock(SOCKET newsfd, DOKI_packet doki) {
 }
 
 void udpRecv(int i) {
-    char buf[256]; int len = 255;
+    char buf[5000]; int len = 5000;
     int slen = sizeof(socket_client_address[i]);
     int r = cp_recvfrom(socketHandles[i], buf, len, 0, (struct sockaddr*)&socket_client_address[i], &slen);
     // printf("[%i]RECV: ", i);
@@ -414,46 +456,82 @@ void udpRecv(int i) {
 
 void udpSend(int i) {
 
-    char* msg = "This msg sent by udp from server";
+    char msg[5000];
+    int pktsize = socketConfigList[i].pktsize;
+    socketClockList[i].current = clock();
+    double time_cost = ((double)socketClockList[i].current - socketClockList[i].previous) / CLOCKS_PER_SEC;
+    int bytes_sent = 0;
     socklen_t    len;
-    // printf("%d \n", socketConfigList[i].port);
     len = sizeof(socket_client_address[i]);
-    int r = sendto(socketHandles[i], msg, strlen(msg), 0, (struct sockaddr*)&socket_client_address[i], len);
-    // printf("[%d]Send: %s\n", i, msg);
-    cp_sleep(1000);
+    if (socketClockList[i].send < socketClockList[i].threshold || socketClockList[i].threshold == 0){
+        int r = sendto(socketHandles[i], msg, pktsize, 0, (struct sockaddr*)&socket_client_address[i], len);
+        socketClockList[i].send += r;
+        socketClockList[i].pktsend++;
+    }
+    if (time_cost >= 0.5 ){
+        socketClockList[i].previous =  socketClockList[i].current;
+        socketClockList[i].send = 0;
+    }
+    if (socketClockList[i].pktnum > 0 && socketClockList[i].pktsend > socketClockList[i].pktnum){
+         printf("[i]Sending pkt complete with %d pkts....", i, socketClockList[i].pktsend);
+         printf("Closing SOCKET  %d\n", i);
+    }
+    
+    
+    // char msg[5000];
+    // int bytes_sent = 0;
+    // int pktsize = socketConfigList[i].pktsize;
+    // socklen_t    len;
+    // // printf("%d \n", socketConfigList[i].port);
+    // len = sizeof(socket_client_address[i]);
+    // int r = sendto(socketHandles[i], msg, pktsize, 0, (struct sockaddr*)&socket_client_address[i], len);
+    // // printf("[%d]Send: %s\n", i, msg);
+    // //cp_sleep(1000);
 
 
 }
 
 void tcpSend(int i) {
-    char* msg = "This msg sent by tcp from server";
+    // char* msg = "This msg sent by tcp from server";
+    char msg[5000];
+    int pktsize = socketConfigList[i].pktsize;
+    socketClockList[i].current = clock();
+    double time_cost = ((double)socketClockList[i].current - socketClockList[i].previous) / CLOCKS_PER_SEC;
     int bytes_sent = 0;
-    int pktsize = strlen(msg);
-
-    while (bytes_sent < pktsize) {
-        int r = send(socketHandles[i], msg, pktsize - bytes_sent, 0);
-        if (r > 0) {
-            bytes_sent += r;
+    
+    if (socketClockList[i].send < socketClockList[i].threshold || socketClockList[i].threshold == 0){
+        while (bytes_sent < pktsize) {
+            int r = send(socketHandles[i], msg, pktsize - bytes_sent, 0);
+            if (r > 0) {
+                bytes_sent += r;
+            }else {
+                printf("Sending error with %d ....", r);
+                printf("Closing SOCKET  %d\n", i);
+                socketValid[i] = false;
+                --numActiveSockets;
+                if (numActiveSockets == (maxSockets - 1))
+                    socketValid[0] = true;
+                cp_closesocket(socketHandles[i]);   
+                break;
+            }
         }
-        else {
-            printf("Sending error with %d ....", r);
-            printf("Closing SOCKET  %d\n", i);
-            socketValid[i] = false;
-            --numActiveSockets;
-            if (numActiveSockets == (maxSockets - 1))
-                socketValid[0] = true;
-            cp_closesocket(socketHandles[i]);
-            break;
-
-        }
-
+        socketClockList[i].send += pktsize;
+        socketClockList[i].pktsend++;
     }
-    // printf("[%d]Send: %s\n", i, msg);
-    cp_sleep(1000);
+    if (time_cost >= 0.5 ){
+        socketClockList[i].previous =  socketClockList[i].current;
+        socketClockList[i].send = 0;
+    }
+    if (socketClockList[i].pktnum > 0 && socketClockList[i].pktsend > socketClockList[i].pktnum){
+         printf("[i]Sending pkt complete with %d pkts....", i, socketClockList[i].pktsend);
+         printf("Closing SOCKET  %d\n", i);
+    }
+
+
 }
 
 void tcpRecv(int i) {
-    char buf[256]; int len = 255;
+    char buf[5000]; int len = 5000;
     int numread = recv(socketHandles[i], buf, len, 0);
     if (numread == SOCKET_ERROR) {
         printf("\nrecv() failed. Error code: %i\n",

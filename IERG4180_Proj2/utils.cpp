@@ -28,7 +28,7 @@ void CloseSocket() {
 
 SOCKET cp_accept(SOCKET sock_default, struct sockaddr* addr, int* c){
     #if defined WIN32 || defined _WIN32
-        return accept(sock_default, addr, & c);
+        return accept(sock_default, addr, c);
     #else 
         return accept(sock_default, addr, (socklen_t*)c);
     #endif
@@ -37,7 +37,7 @@ SOCKET cp_accept(SOCKET sock_default, struct sockaddr* addr, int* c){
 
 int cp_getsockname(SOCKET hDatagramSocket,struct sockaddr* LocalAddr, int *iAddrLen){
     #if defined WIN32 || defined _WIN32
-        return getsockname(hDatagramSocket,LocalAddr, &iAddrLen);
+        return getsockname(hDatagramSocket,LocalAddr, iAddrLen);
     #else 
         return getsockname(hDatagramSocket, LocalAddr, (socklen_t *)iAddrLen);
     #endif

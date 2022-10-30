@@ -4,6 +4,7 @@
 #pragma comment(lib,"ws2_32.lib")
 #define OS 0
 #define LOCAL_SYSTEM "windows"
+typedef int socklen_t;
 
 #else 
 
