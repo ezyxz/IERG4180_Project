@@ -18,3 +18,15 @@ Linux compile line: g++ NetProbeServer.cpp utils.cpp -o LinuxServer
 Win compile line: g++ NetProbeServer.cpp utils.cpp -o WinServer -lwsock32
 
 ​				g++ NetProbeClient.cpp utils.cpp -o WinClient -lwsock32
+
+### Remarks
+
+If running client and server on same Linux machine and set the pktrate > 0, 
+
+the info print interval(stat) may shows very late.
+
+This issue **won't** happened on two different Linux machine and on same windows machine **neither**.
+
+
+
+ 
