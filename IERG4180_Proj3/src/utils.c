@@ -74,16 +74,18 @@ void cp_sleep(int num){
     #endif 
 }
 
-int cp_setSockTimeout(int second, SOCKET * sock_fd){
-    int ret;
+int if_timeout(double d, int i){
     #if defined WIN32 || defined _WIN32
-       int timeout = second*1000;
-       ret=setsockopt(*sock_fd,SOL_SOCKET,SO_SNDTIMEO,&timeout,sizeof(timeout));
+    if ( d >= i ){
+         return 1;
+     }else{
+         return -1;
+     }
     #else 
-        struct timeval timeout;
-        timeout.tv_sec = second;
-        timeout.tv_usec = 0;
-        ret=setsockopt(*sock_fd,SOL_SOCKET,SO_SNDTIMEO,(const char*)&timeout,sizeof(timeout));
+     if ( d*1000 >= i ){
+         return 1;
+     }else{
+         return -1;
+     }
     #endif 
-    return ret;
 }

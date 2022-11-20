@@ -49,7 +49,7 @@ void CloseSocket();
 
 int getErrorCode();
 
-int cp_setSockTimeout(int second, SOCKET * sock_fd);
+int if_timeout(double d, int i);
  #endif
 
 
