@@ -46,3 +46,53 @@ g++ NetProbeClient.cpp src/utils.c -o Linuxclient
 Win compile：
 
 g++ NetProbeClient.cpp src/utils.c -o Winclient -lwsock32
+
+### Remark
+
+1. how the server makes sure to close all the sockets.
+
+   When using tcpSend， the send function returns -1 means the client close the socket.
+
+   When using tcpRecv, the recv function returns -1 means the client close the socket.
+
+   When using udp, I use Poll, register
+
+   struct pollfd peerfd[1024];
+
+   peerfd[j].fd = newsfd;
+
+   peerfd[j].events = POLLIN; (in void processNewConnection())
+
+   and also send j as sturct to pipe.
+
+   When The thread function mointor_udp_close_proc notice the tcp is closing,
+
+   put peerfd[j].fd = -1, then the consumer know to close udp socket.
+
+2. describe how you control the pool size.
+
+   I maintain a array called int *THREADS_STATUS;
+
+   Here are the specific number meanning. 
+
+   //0->killed  1->block   2->tcp working   3->udp working
+
+   When a thread starting or working, it should update his status in THREADS_STATUS;
+
+   Thread function thread_pool_control_proc check the THREADS_STATUS at intervals.
+
+   When it needs to reduce thread, put self_kill=1 in struct into pipe.
+
+   When the blocked thread get this job, and judge self_kill==1 just return to end this thread.
+
+   When it needs to double thread, realloc THREADS_STATUS and threadPoolState.ppConsumer.
+
+3. Do you provide an option to disable Nagle algorithm? (small bonus)
+
+   No
+
+4. Others: 
+
+   Finish response mode
+
+   Executable files are in bin.
