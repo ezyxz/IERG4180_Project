@@ -31,4 +31,18 @@ This issue **won't** happened on two different Linux machine and on same windows
 
 
 
- 
+## Proj3 - description
+
+ Linux compile：
+
+【Server】
+
+gcc NetProbeServer.c src/utils.c src/pipe.c src/tinycthread.c -lpthread -std=c99 -o server
+
+【Clinet】
+
+g++ NetProbeClient.cpp src/utils.c -o Linuxclient
+
+Win compile：
+
+g++ NetProbeClient.cpp src/utils.c -o Winclient -lwsock32

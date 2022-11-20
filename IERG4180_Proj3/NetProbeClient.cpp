@@ -64,8 +64,9 @@ int tcpRecv();
 int tcpSend();
 int udpSend();
 int udpRecv();
-int tcpRecv();
+void responseProc();
 int special_port;
+clock_t global_current, global_previous;
 // double loss_cal(set<int> set, int start, int end);
 
 int main(int argc, char* argv[])
@@ -78,6 +79,13 @@ int main(int argc, char* argv[])
     InitSocket();
 
     sendConfigViaTCP();
+
+
+    if (MODE == 2)
+    {
+        responseProc();
+    }
+    
 
     if (strcmp(proto, "tcp") == 0 || strcmp(proto, "TCP") == 0) {
         if (MODE == 0) {
@@ -97,12 +105,8 @@ int main(int argc, char* argv[])
             udpRecv();
             
         }
-
-
-
-
-
     }
+    
    
 
     cp_closesocket(sock);
@@ -110,7 +114,139 @@ int main(int argc, char* argv[])
 }
 
 
+void responseProc(){
 
+    double min_time = 1000;
+    double max_time = 0;
+
+    int byte_recv = 0;
+    char msg[50000];
+    double* inter_arrival_list = (double*)malloc(Jitter_max * sizeof(double));
+    double* J_i_list = (double*)malloc(Jitter_max * sizeof(double));
+    double* A_i_list = (double*)malloc(Jitter_max * sizeof(double));
+    int cum_packet_number = 0, total_packet_number = 0;
+    double cum_time_cost = 0;
+    double total_time = 0;
+    while (1){
+
+        while (byte_recv < pktsize) {
+            int ret = recv(sock_default, msg, pktsize - byte_recv, 0);
+            if (ret == SOCKET_ERROR) {
+                printf("Recv fail with error code %d\n", getErrorCode());
+                cp_sleep(3000);
+                break;
+            }
+            else {
+                if (ret == 0) {
+                    break;
+                }
+                else {
+                    byte_recv += ret;
+                }
+            }
+        }
+        global_current = clock();
+        
+        double time_gap = (((double)global_current - global_previous) / CLOCKS_PER_SEC)*1000;
+        cum_time_cost += time_gap;
+        global_previous = global_current;
+        if (time_gap > max_time){
+            max_time = time_gap;
+        }
+        if (time_gap < min_time){
+            min_time = time_gap;
+        }
+        inter_arrival_list[cum_packet_number++] = time_gap;
+        A_i_list[cum_packet_number] = cum_time_cost;
+        double d = calculate_mean_cost(inter_arrival_list, cum_packet_number);
+        J_i_list[cum_packet_number - 1] = time_gap - d;
+
+
+        if (if_timeout(cum_time_cost, mystat) == 1){
+            double jitter = calculate_mean_cost(J_i_list, cum_packet_number);
+            double avg = calculate_mean_cost(A_i_list, cum_packet_number);
+            total_time += cum_time_cost;
+            printf("Elapsed [%.2f s] Replies [%d] Min [%.2f ms] Max [%.2f ms] Avg [%.2fms] Jitter [%.2fms]\n",total_time,cum_packet_number,  min_time, max_time, avg, jitter  );
+            cum_packet_number = 0;
+            cum_time_cost = 0;
+            min_time = 1000;
+            max_time = 0;
+        }
+        
+
+        
+        
+        
+        cp_closesocket(sock_default);
+        int recv_size;
+
+        int port = strtol(rport, NULL, 10);
+        if (port < 0) {
+            printf("error port number %d \n", port);
+            return;
+        }
+
+        if ((sock_default = socket(AF_INET, SOCK_STREAM, 0)) == INVALID_SOCKET)
+        {
+            printf("Could not create socket : %d", getErrorCode());
+        }
+
+
+        server_addr.sin_addr.s_addr = inet_addr(rhost);
+        server_addr.sin_family = AF_INET;
+        server_addr.sin_port = htons(port);
+
+        while (connect(sock_default, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0)
+        {
+            printf("No Server connected.....\n");
+            cp_sleep(1000);
+        }
+
+        packet.mode = MODE;
+        if (strcmp(proto, "tcp") == 0 || strcmp(proto, "TCP") == 0) {
+            packet.proto = 1;
+        }
+        else {
+            packet.proto = 0;
+        }
+
+        if (MODE == 2)
+        {
+            packet.proto = 1;
+        }
+        
+
+        packet.pktsize = pktsize;
+        packet.pktnum = pktnum;
+        packet.pktrate = pktrate;
+        packet.port = -1;
+
+        char conf[60];
+        struct2string(&packet, conf);
+        //conf[59] = 0;
+        //printf("%s\n", conf);
+        int bytes_sent = 0;
+        int msg_size = 60;
+        while (bytes_sent < msg_size) {
+            int r = send(sock_default, conf + bytes_sent, msg_size - bytes_sent, 0);
+            if (r > 0) {
+                bytes_sent += r;
+            }
+            else {
+                printf("Sending error with %d\n", r);
+                break;
+
+            }
+        }
+        
+        // cp_sleep(1000);
+    }
+    
+    
+
+    
+
+}
 
 
 
@@ -395,6 +531,9 @@ void sendConfigViaTCP() {
     else {
         packet.proto = 0;
     }
+    if (MODE == 2){
+        packet.proto = 1;
+    }
 
     packet.pktsize = pktsize;
     packet.pktnum = pktnum;
@@ -420,7 +559,10 @@ void sendConfigViaTCP() {
     }
     printf("Configration sending complete!\n");
     printf("With Config Mode %d | proto %d | pktsize %d | pktnum %d | pktrate %d | port %d\n", packet.mode, packet.proto, packet.pktsize, packet.pktnum, packet.pktrate, packet.port);
-    
+    if (MODE == 2){
+        global_previous = clock();
+        return;
+    }
     if (strcmp(proto, "udp") == 0 || strcmp(proto, "UDP") == 0) {
         
         DOKI_packet doki;
@@ -552,6 +694,7 @@ void argParse(int argc, char* argv[]) {
         {"lhost", 1, NULL, 11},
         {"lport", 1, NULL, 12},
         {"rbufsize", 1, NULL, 13},
+        {"response", 0, NULL, 14},
     };
 
     while ((c = getopt_long_only(argc, argv, optstring, opts, NULL)) != -1) {
@@ -561,6 +704,9 @@ void argParse(int argc, char* argv[]) {
             break;
         case 1:
             MODE = 1;
+            break;
+        case 14:
+            MODE = 2;
             break;
         case 3:
             mystat = strtol(optarg, NULL, 10);

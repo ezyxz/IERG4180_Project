@@ -1,5 +1,8 @@
-// gcc hello.c src/tinycthread.c -lpthread -std=c99 -o hello 
 
+/**
+ * @Author Xinyuan Zuo
+ * @SID 1155183193
+ * */
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -56,7 +59,7 @@ int thread_pool_control_proc(int i);
 void string2struct(DOKI_packet* packet, char* msg);
 void struct2string(DOKI_packet* packet, char* msg);
 void connPrint(char* ip, int port, int i, int j, int mode, int proto, int pktrate);
-int tcpSend(SOCKET* pSock, int pktrate, int pktsize, int pktnum);
+int tcpSend(SOCKET* pSock, int pktrate, int pktsize, int pktnum, int mode);
 int udpSend(SOCKET* pSock, int pktrate, int pktsize, int pktnum, struct sockaddr_in* server_udp_addr, int poll_index);
 int getUdpSenderSock(SOCKET newsfd, DOKI_packet doki, SOCKET* udp_sender_sock, struct sockaddr_in* temp_addr);
 int getUdpReceiverSock(SOCKET newsfd, DOKI_packet doki, SOCKET *hDatagramSocket, struct sockaddr_in *LocalAddr);
@@ -319,20 +322,25 @@ int consumer_proc(int i)
 
 	THREADS_STATUS[i] = 1;
 	while((bytes_read=pipe_pop(threadPoolState.ppConsumer[i], &mySockDesc, sizeof(mySockDesc)))){
-
-		THREADS_STATUS[i] = 2;
 		if (mySockDesc.self_kill == 1){
 			printf("Thread[%d] killed......\n", i);
 			THREADS_STATUS[i] = 0;
 			return -1;
 		}
+        if (mySockDesc.config->proto == 1){
+            THREADS_STATUS[i] = 2;
+        }else if (mySockDesc.config->proto == 0){
+            THREADS_STATUS[i] = 3;
+        }
+
+
 		//Send
-		if (mySockDesc.config->mode == 1){
+		if (mySockDesc.config->mode == 1 || mySockDesc.config->mode == 2){
 			//TCP
 			if (mySockDesc.config->proto == 1)
 			{
 				printf("Thread[%d] start SEND with TCP on [%d]Bps [%d]Pktsize [%d]Pktnum\n", i, mySockDesc.config->pktrate, mySockDesc.config->pktsize, mySockDesc.config->pktnum);
-				tcpSend(&mySockDesc.sock, mySockDesc.config->pktrate, mySockDesc.config->pktsize, mySockDesc.config->pktnum);
+				tcpSend(&mySockDesc.sock, mySockDesc.config->pktrate, mySockDesc.config->pktsize, mySockDesc.config->pktnum, mySockDesc.config->mode);
                 cp_closesocket(mySockDesc.sock);
 				printf("Thread[%d] close socket.....\n", i);
 			//UDP
@@ -404,13 +412,20 @@ int thread_pool_control_proc(int i){
 	printf("thread controller start.....\n");
 	int current_live_thread = 0;
 	int current_working_thread = 0;
+    int udp_working_thread = 0;
+    int tcp_working_thread = 0;
     int time_gap = 0;
+    int total_time = 0;
 	while (1){
 		for (int i = 0; i < THREAD_TAIL; i++){
 			if (THREADS_STATUS[i] > 0){
 				current_live_thread++;
 				if (THREADS_STATUS[i] == 2){
 					current_working_thread++;
+                    tcp_working_thread++;
+				}else if (THREADS_STATUS[i] == 3){
+					current_working_thread++;
+                    udp_working_thread++;
 				}
 			}
 		}
@@ -450,11 +465,13 @@ int thread_pool_control_proc(int i){
             time_gap = 0;
         }
 		
-
-		printf("Current available threads [%d] | working threads[%d]\n", current_live_thread, current_working_thread);
+        total_time += 2;
+		printf("Elapsed [%ds] ThreadPool [%d|%d] TCP Clients [%d] UDP Clients [%d]\n", total_time, current_live_thread, current_working_thread, tcp_working_thread,udp_working_thread);
 		cp_sleep(2000);
 		current_live_thread = 0;
 		current_working_thread = 0;
+        udp_working_thread = 0;
+        tcp_working_thread = 0;
 	}
 
 }
@@ -469,7 +486,7 @@ int thread_pool_control_proc(int i){
 
 
 
-int tcpSend(SOCKET* pSock, int pktrate, int pktsize, int pktnum) {
+int tcpSend(SOCKET* pSock, int pktrate, int pktsize, int pktnum, int mode) {
 
     char msg[50000];
 	int if_error = 0;
@@ -479,8 +496,30 @@ int tcpSend(SOCKET* pSock, int pktrate, int pktsize, int pktnum) {
     int p_num_index = 1;
 	clock_t current_clock, previous_clock = clock();
 	double single_iter_pkt_threshold = pktrate * ((double)1/2);
-    printf("single_iter_pkt_threshold %f\n", single_iter_pkt_threshold);
+    // printf("single_iter_pkt_threshold %f\n", single_iter_pkt_threshold);
 	int pkts_send_per_stat = 0;
+
+    if(mode == 2){
+        bytes_sent = 0;
+        while (bytes_sent < pktsize) {
+            int r = send(*pSock, msg + bytes_sent, pktsize - bytes_sent, 0);
+            if (r > 0) {
+                bytes_sent += r;
+            }
+            else {
+                printf("Sending error with %d\n", r);
+                if_error = 1;
+                break;
+
+            }
+        }
+        printf("response sending complete...\n");
+        return 1;
+    }
+
+
+
+
 
     while (!if_error && (p_num_index < pktnum || pktnum == 0)) {
 
@@ -552,8 +591,8 @@ int udpSend(SOCKET* pSock, int pktrate, int pktsize, int pktnum, struct sockaddr
                 bytes_send_per_stat += r;
             }
             current_time = clock();
-            double time_gap = ((double)current_time - previous_time);
-            if (time_gap >= 500*1000) {
+            double time_gap = ((double)current_time - previous_time) / CLOCKS_PER_SEC;
+            if (time_gap * 1000 >= 500) {
                 // double throughput = ((double)bytes_send_per_stat * 8) / (time_gap * 1000);
                 // printf("Sender:[Elapsed] %.2f ms, [Pkts] %d, [Bytes] %d B, [Rate] %.5f Mbps\n", time_gap/1000, pkts_send_per_stat, bytes_send_per_stat, throughput);
                 previous_time = current_time;
