@@ -51,10 +51,10 @@ int main(int argc, char **argv){
     if ((ctx = SSL_CTX_new(method)) == NULL)
         printf("Unable to create a new SSL context structure.\n");
     
-    ret = SSL_CTX_load_verify_file(ctx, "domain.crt");
-    if (ret == 1){
-        printf("crt added to cert store.\n");
-    }
+    // ret = SSL_CTX_load_verify_file(ctx, "domain.crt");
+    // if (ret == 1){
+    //     printf("crt added to cert store.\n");
+    // }
     ssl = SSL_new(ctx);
     SSL_set_fd(ssl, server);
     SSL_set_tlsext_host_name(ssl, rhost); // Enable Server-Name-Indication
