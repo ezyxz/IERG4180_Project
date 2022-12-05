@@ -1,3 +1,5 @@
+//gcc server.c src/utils.c src/tinycthread.c src/pipe.c -lssl -lcrypto -o server
+
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/pem.h>
@@ -5,6 +7,7 @@
 #include <openssl/x509_vfy.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include "getopt.h"
 
 # include <sys/types.h>
 # include <sys/socket.h>
@@ -23,7 +26,9 @@
 #include "src/utils.h"
 #include "src/pipe.h"
 
-char* lhost = "192.168.10.129";
+
+// char* lhost = "192.168.10.129";
+char* lhost = "127.0.0.1";
 int THREAD_MODE = 1; 
 
 
@@ -35,8 +40,7 @@ SSL_CTX *ctx;
 int server = 0;
 int ret, i;
 char *ptr = NULL;
-const char* pCertPath = "domain.crt";
-const char* pKeyPath = "domain.key";
+void argParse(int argc, char* argv[]);
 int HttpConnWorker(void * args);
 int HttpAcceptWorker(void *args);
 int HttpsConnWorker(void * args);
@@ -44,6 +48,9 @@ int ThreadMonitorWorker(int i);
 int consumer_proc(int i);
 char* itoa(int num,	char* str,int radix);
 int send_(int s, char *buf, int len);
+void processRequest(char* request, int client_sock, SSL *ssl) ;
+void argPrint();
+int POOL_SIZE = 8;
 long lhttpsport = 4181;
 long lhttpport = 4180;
 thrd_t t;
@@ -82,17 +89,30 @@ ThreadPoolState threadPoolState;
 int *THREADS_STATUS; // in Thread Pool mode 0->killed 1->block 2->work 4->http 5->https
 int THREAD_TAIL = 0;
 
-
+void authorPrint(){
+    printf("********************************\n");
+    printf("********IERG4180 Proj4**********\n");
+    printf("******@author:Xinyuan Zuo*******\n");
+    printf("******@SID: 1155183193**********\n");
+    printf("********************************\n\n");
+}
 
 int main(int argc, char **argv){
+    authorPrint();
+    argParse(argc, argv);
     //thread MODE one connection -> create one thread
-    int pool_size = 8;
+    argPrint();
+    int pool_size = POOL_SIZE;
+
     if (THREAD_MODE == 0){
+
         printf("Init Server Thread......");
         THREAD_TAIL = 1;
         THREADS_STATUS = (int*)malloc(sizeof(int)*THREAD_TAIL);
         printf("Done\n");
+
     }else if (THREAD_MODE == 1){
+
         printf("Init Server Thread Pool......");
         THREAD_TAIL = pool_size;
         threadPoolState.pPipe = pipe_new(sizeof(int), 0);
@@ -109,13 +129,13 @@ int main(int argc, char **argv){
             }
 	    }
 
-
-        printf("Done\n");
     }
+
     if (thrd_create(&t, ThreadMonitorWorker,  -1) != thrd_success)
 	{		
 		printf("thread create fail!!!\n");
 	}
+
     printf("Load open SSL....\n");
     SSL_library_init();
     OpenSSL_add_all_algorithms();
@@ -149,8 +169,6 @@ int main(int argc, char **argv){
         exit(EXIT_FAILURE);
     }
     printf("domain.key loaded.\n");
-    printf("Done\n");
-
     printf("Init Https Socket....\n");
     //init sock 
     int sock = socket(PF_INET, SOCK_STREAM, 0);
@@ -211,6 +229,7 @@ int main(int argc, char **argv){
 
     }else if (THREAD_MODE == 1)
     {
+
        if (thrd_create(&t, HttpAcceptWorker, -1) != thrd_success)
         {		
             printf("thread create fail!!!\n");
@@ -228,6 +247,7 @@ int main(int argc, char **argv){
             mySockDesc.ctx = ctx;
             pipe_push(threadPoolState.pProducer, &mySockDesc, sizeof(mySockDesc));
         }
+
     }
     
     
@@ -316,12 +336,12 @@ int HttpConnWorker(void * args){
             recvLen += ret;
             if (ret <= 1) {
                 THREADS_STATUS[id] = 0;
-                printf("Thread[%d] Finish http request on socket with error [%d]\n", id, client);
+                printf("Thread[%d] Finish http request on socket [%d]\n", id, client);
                 close(client);
                 return 0;
             }
         }
-        processHttpsRequest(buf, client, NULL);
+        processRequest(buf, client, NULL);
     }
 }
 
@@ -364,7 +384,7 @@ int HttpsConnWorker(void * args){
             }        
         }
         // printf("%s", msg);
-        processHttpsRequest(msg, client, ssl);
+        processRequest(msg, client, ssl);
     }
     return 0;
 }
@@ -422,7 +442,7 @@ int consumer_proc(int i)
                 }
                 if (if_break == 1)
                     break;
-                processHttpsRequest(buf, client, NULL);
+                processRequest(buf, client, NULL);
             }
 
 
@@ -461,7 +481,7 @@ int consumer_proc(int i)
                 // printf("%s", msg);
                 if (if_break == 1)
                     break;
-                processHttpsRequest(msg, client, ssl);
+                processRequest(msg, client, ssl);
             }
         }
 		
@@ -584,27 +604,7 @@ int ThreadMonitorWorker(int i){
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-void processHttpsRequest(char* request, int client_sock, SSL *ssl) {   
+void processRequest(char* request, int client_sock, SSL *ssl) {   
     char arguments[BUFSIZ];  
     strcpy(arguments, "./");
 
@@ -619,7 +619,6 @@ void processHttpsRequest(char* request, int client_sock, SSL *ssl) {
     if(strcmp(arguments,".//") == 0){
         strcpy(arguments, ".//index.html");
     }
-    // printf("file --> %s\n", arguments);
 	FILE* rfile= fopen(arguments, "rb");
     if (rfile == NULL){
 
@@ -688,27 +687,23 @@ void processHttpsRequest(char* request, int client_sock, SSL *ssl) {
 }
 
 char* itoa(int num,	char* str,int radix) {  
-	char index[]="0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";	//索引表
-	unsigned unum;											//中间变量
+	char index[]="0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";	
+	unsigned unum;											
 	int i=0,j,k;
-	//确定unum的值
-	if(radix==10&&num<0)									//十进制负数
+	if(radix==10&&num<0)									
 	{
 		unum=(unsigned)-num;
 		str[i++]='-';
 	}
-	else unum=(unsigned)num;								//其他情况
-	//逆序
+	else unum=(unsigned)num;								
 	do
 	{
 		str[i++]=index[unum%(unsigned)radix];
 		unum/=radix;
 	}while(unum);
 	str[i]='\0';
-	//转换
-	if(str[0]=='-') k=1;									//十进制负数
+	if(str[0]=='-') k=1;									
 	else k=0;
-	//将原来的“/2”改为“/2.0”，保证当num在16~255之间，radix等于16时，也能得到正确结果
 	char temp;
 	for(j=k;j<=(i-k-1)/2.0;j++)
 	{
@@ -736,4 +731,63 @@ int send_(int s, char *buf, int len) {
     }
     len = total;          
     return n==-1?-1:0;         
+}
+
+
+void argParse(int argc, char* argv[]) {
+    const char* optstring = "a";
+    int c;
+    struct option opts[] = {
+        {"lhost", 1, NULL, 0},
+        {"lhttpport", 1, NULL, 1},
+        {"lhttpsport", 1, NULL, 2},
+        {"server", 1, NULL, 3},
+        {"poolsize", 1, NULL, 4},
+
+    };
+
+    while ((c = getopt_long_only(argc, argv, optstring, opts, NULL)) != -1) {
+        switch (c) {
+        case 0:
+            if (strcmp("localhost", optarg) == 0){
+                lhost = "127.0.0.1";    
+            }else{
+                lhost = optarg;
+            }
+            
+            break;
+        case 1:
+            lhttpport = strtol(optarg, NULL, 10);
+            break;
+        case 2:
+            lhttpsport = strtol(optarg, NULL, 10);
+            break;
+        case 3:
+            if (strcmp("threadpool", optarg) == 0){
+                THREAD_MODE == 1;
+            }else if (strcmp("thread", optarg) == 0){
+                THREAD_MODE == 0;
+            }
+            break;
+        case 4:
+            POOL_SIZE = strtol(optarg, NULL, 10);
+            break;
+        
+        default:
+            printf("Error: get invalid argument\n");
+            break;
+
+        }
+    }
+}
+
+void argPrint(){
+
+    printf("NetProbeSrv <parameters>, see below:\n");
+    printf("   <-lhost hostname> [%s]\n", lhost);
+    printf("   <-http port> [%d]\n", lhttpport);
+    printf("   <-https port> [%d]\n", lhttpsport);
+    printf("   <-server mode> [%d] 0->thread 1->threadpool\n\n\n", THREAD_MODE);
+
+
 }

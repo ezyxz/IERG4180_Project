@@ -96,3 +96,23 @@ g++ NetProbeClient.cpp src/utils.c -o Winclient -lwsock32
    Finish response mode
 
    Executable files are in bin.
+
+## Proj4 - description
+
+Server compile: gcc server.c src/utils.c src/tinycthread.c src/pipe.c -lssl -lcrypto -o server
+Server run: ./server 
+Client compile:  gcc client.c  -lssl -lcrypto -o client
+Client run: ./client   default: http://127.0.0.1:4180/
+to get index.html to run ./client -url http://127.0.0.1:4180/ -file index.html
+in https: ./client -url https://127.0.0.1:4181/ -file index.html
+to get file.txt to run ./client -url http://127.0.0.1:4180/ -file file.txt
+in https: ./client -url https://127.0.0.1:4181/ -file file.txt
+
+to connect Internet:
+./client -url https://www.baidu.com
+
+Using web browser https://192.168.10.129:4181/
+
+
+### Remarks
+ Using thrid part library to parse URL by https://gitee.com/yikoulinux/url/tree/master
